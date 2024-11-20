@@ -1,7 +1,6 @@
 package fr.isen.eustache.androidsmartdevice
 
 import android.Manifest
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -17,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.activity.compose.setContent
 import androidx.core.content.ContextCompat
 import androidx.core.app.ActivityCompat
+import androidx.compose.ui.platform.LocalContext
 
 class ScanActivity : AppCompatActivity() {
 
@@ -28,7 +28,7 @@ class ScanActivity : AppCompatActivity() {
 
         // Register the launcher for enabling Bluetooth
         enableBluetoothLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
+            if (result.resultCode == RESULT_OK) {
                 Toast.makeText(this, "Bluetooth enabled", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "Bluetooth not enabled", Toast.LENGTH_SHORT).show()
@@ -40,6 +40,8 @@ class ScanActivity : AppCompatActivity() {
             val allGranted = permissions.all { it.value }
             if (allGranted) {
                 Toast.makeText(this, "All permissions granted", Toast.LENGTH_SHORT).show()
+                // Now you can proceed to start BLE scan
+                startBLEScan()
             } else {
                 Toast.makeText(this, "Permissions denied", Toast.LENGTH_SHORT).show()
             }
@@ -47,7 +49,10 @@ class ScanActivity : AppCompatActivity() {
 
         // Set the composable UI
         setContent {
-            ScanActivityContent(enableBluetoothLauncher, requestPermissionLauncher)
+            ScanActivityContent(
+                enableBluetoothLauncher = enableBluetoothLauncher,
+                requestPermissionLauncher = requestPermissionLauncher
+            )
         }
     }
 
@@ -78,25 +83,9 @@ class ScanActivity : AppCompatActivity() {
         }
     }
 
-    private fun showPermissionRationaleOrRequest() {
-        val permissionsToRequest = getAllPermissionsForBLE().filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }.toTypedArray()
-
-        val shouldShowRationale = permissionsToRequest.any {
-            ActivityCompat.shouldShowRequestPermissionRationale(this, it)
-        }
-
-        if (shouldShowRationale) {
-            // Show an explanation to the user using Compose
-            ShowPermissionRationaleDialog(
-                onPositiveClick = { requestPermissionLauncher.launch(permissionsToRequest) },
-                onNegativeClick = { /* dismiss the dialog */ }
-            )
-        } else {
-            // Directly request the permissions
-            requestPermissionLauncher.launch(permissionsToRequest)
-        }
+    private fun startBLEScan() {
+        // Logic to start BLE scan goes here
+        Toast.makeText(this, "Starting BLE scan...", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -105,28 +94,24 @@ fun ScanActivityContent(
     enableBluetoothLauncher: ActivityResultLauncher<Intent>,
     requestPermissionLauncher: ActivityResultLauncher<Array<String>>
 ) {
-    // Your ComposeScan composable
-    ComposeScan(enableBluetoothLauncher, requestPermissionLauncher)
-}
+    val context = LocalContext.current // Use LocalContext to access the context
 
-@Composable
-fun ShowPermissionRationaleDialog(
-    onPositiveClick: () -> Unit,
-    onNegativeClick: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = { onNegativeClick() },
-        title = { Text("Permission Required") },
-        text = { Text("This app requires location and Bluetooth permissions to scan for devices. Please grant these permissions.") },
-        confirmButton = {
-            Button(onClick = onPositiveClick) {
-                Text("OK")
-            }
-        },
-        dismissButton = {
-            Button(onClick = onNegativeClick) {
-                Text("Cancel")
-            }
+    // Display the "Play" button
+    Button(onClick = {
+        // Check if permissions are granted, if not, request them
+        val permissions = arrayOf(
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.BLUETOOTH_ADMIN
+        )
+        if (permissions.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) {
+            // If permissions are granted, start scanning
+            Toast.makeText(context, "Starting BLE scan...", Toast.LENGTH_SHORT).show()
+        } else {
+            // If permissions are not granted, request them
+            requestPermissionLauncher.launch(permissions)
         }
-    )
+    }) {
+        Text("Play")
+    }
 }

@@ -1,9 +1,9 @@
 package fr.isen.eustache.androidsmartdevice
 
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothManager
-import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -17,16 +17,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview // Assure-toi d'avoir cet import
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
+import androidx.compose.material3.IconButton
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import fr.isen.eustache.androidsmartdevice.ui.theme.AndroidSmartDeviceTheme
+import android.content.Context
+import android.app.Activity
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,9 +42,22 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        // Si la permission de localisation est accordée, démarrer le scan
+        if (requestCode == 1) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Permission de localisation accordée !", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Permission de localisation requise pour le scan", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 }
 
-@OptIn(ExperimentalMaterial3Api::class) // Ajoute cette annotation pour les API Material3 expérimentales
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NavGraph(navController: NavHostController) {
     NavHost(navController, startDestination = "home") {
@@ -51,6 +68,12 @@ fun NavGraph(navController: NavHostController) {
 
 @Composable
 fun BLEHomeScreen(navController: NavController) {
+    val context = LocalContext.current
+    val locationPermissionGranted = ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.ACCESS_FINE_LOCATION
+    ) == PackageManager.PERMISSION_GRANTED
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -81,14 +104,14 @@ fun BLEHomeScreen(navController: NavController) {
         )
 
         Spacer(modifier = Modifier.height(70.dp))
-        // Bouton personnalisé
+
         Button(
             onClick = { navController.navigate("scan") },
             modifier = Modifier
-                .size(width = 200.dp, height = 60.dp), // Ajuste la taille du bouton
+                .size(width = 200.dp, height = 60.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF0D47A1), // Bleu foncé
-                contentColor = Color.White // Texte en blanc
+                containerColor = Color(0xFF0D47A1),
+                contentColor = Color.White
             )
         ) {
             Text(text = "Commencer", fontSize = 18.sp)
@@ -99,8 +122,14 @@ fun BLEHomeScreen(navController: NavController) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BLEScanScreen() {
-    // Créer un état mutable pour suivre l'état du scan
+    val context = LocalContext.current
     val scanInProgress = remember { mutableStateOf(false) }
+
+    // Vérifie si la permission de localisation est accordée
+    val locationPermissionGranted = ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.ACCESS_FINE_LOCATION
+    ) == PackageManager.PERMISSION_GRANTED
 
     Scaffold(
         topBar = {
@@ -108,14 +137,17 @@ fun BLEScanScreen() {
                 title = { Text(text = "Scan BLE") },
                 actions = {
                     IconButton(onClick = {
-                        // Change l'état en fonction de l'état actuel
-                        scanInProgress.value = !scanInProgress.value
-                    }) {
-                        // Affiche le bon logo selon l'état du scan
-                        val icon = if (scanInProgress.value) {
-                            R.drawable.ic_pause // Assure-toi d'avoir cet icône dans les ressources
+                        // Si la permission est accordée, on lance le scan
+                        if (locationPermissionGranted) {
+                            scanInProgress.value = !scanInProgress.value
                         } else {
-                            R.drawable.ic_play // Assure-toi d'avoir cet icône dans les ressources
+                            requestLocationPermission(context)
+                        }
+                    }) {
+                        val icon = if (scanInProgress.value) {
+                            R.drawable.ic_pause
+                        } else {
+                            R.drawable.ic_play
                         }
 
                         Icon(
@@ -135,23 +167,22 @@ fun BLEScanScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Change le texte selon l'état du scan
             val text = if (scanInProgress.value) "Scan BLE en cours..." else "Lancer le Scan BLE"
             Text(text = text, fontSize = 20.sp)
-
-            // Optionnel : afficher d'autres informations ou UI ici
         }
     }
 }
 
-fun startScan(context: Context) {
-    val bluetoothManager = ContextCompat.getSystemService(context, BluetoothManager::class.java)
-    val bluetoothAdapter: BluetoothAdapter? = bluetoothManager?.adapter
-    if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
-        // Gérer le Bluetooth désactivé
-    } else {
-        // Logique de scan
+private fun requestLocationPermission(context: Context) {
+    // Si la permission est nécessaire, on la demande
+    if (ActivityCompat.shouldShowRequestPermissionRationale(context as Activity, Manifest.permission.ACCESS_FINE_LOCATION)) {
+        Toast.makeText(context, "La permission de localisation est requise pour scanner les périphériques BLE.", Toast.LENGTH_LONG).show()
     }
+    ActivityCompat.requestPermissions(
+        context,
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+        1
+    )
 }
 
 @Preview(showBackground = true)
