@@ -7,6 +7,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +33,11 @@ import androidx.core.content.ContextCompat
 import fr.isen.eustache.androidsmartdevice.ui.theme.AndroidSmartDeviceTheme
 import android.content.Context
 import android.app.Activity
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
+import android.util.Log
+import androidx.compose.runtime.LaunchedEffect
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,7 +52,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
         // Si la permission de localisation est accordée, démarrer le scan
         if (requestCode == 1) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
@@ -124,6 +130,7 @@ fun BLEHomeScreen(navController: NavController) {
 fun BLEScanScreen() {
     val context = LocalContext.current
     val scanInProgress = remember { mutableStateOf(false) }
+    val devicesFound = remember { mutableStateOf<Set<ScanResult>>(emptySet()) }
 
     // Vérifie si la permission de localisation est accordée
     val locationPermissionGranted = ContextCompat.checkSelfPermission(
@@ -131,15 +138,71 @@ fun BLEScanScreen() {
         Manifest.permission.ACCESS_FINE_LOCATION
     ) == PackageManager.PERMISSION_GRANTED
 
+    val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+
+    // Vérifie si Bluetooth est activé
+    if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+        Toast.makeText(context, "Bluetooth n'est pas activé", Toast.LENGTH_SHORT).show()
+    }
+
+    val scanner = bluetoothAdapter?.bluetoothLeScanner
+    val scanCallback = remember {
+        object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                if (locationPermissionGranted) {
+                    try {
+                        // Ajoutez le périphérique trouvé à la liste
+                        devicesFound.value = devicesFound.value + result
+                        Log.d("BLEScan", "Device found: ${result.device.name ?: "Unknown"} - ${result.device.address}")
+                    } catch (e: SecurityException) {
+                        Log.e("BLEScan", "Permission manquante pour accéder aux informations du périphérique", e)
+                        // Demander la permission à l'utilisateur si nécessaire
+                        requestLocationPermission(context)
+                    }
+                } else {
+                    Log.e("BLEScan", "La permission de localisation est requise pour accéder aux périphériques BLE.")
+                    // Demander la permission si nécessaire
+                    requestLocationPermission(context)
+                }
+            }
+
+
+            override fun onScanFailed(errorCode: Int) {
+                Log.e("BLEScan", "Scan failed with error code: $errorCode")
+            }
+        }
+    }
+
+
+    // Demande la permission si nécessaire
+    LaunchedEffect(locationPermissionGranted) {
+        if (!locationPermissionGranted) {
+            requestLocationPermission(context)
+        }
+    }
+
+    // Gère l'état du scan
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(text = "Scan BLE") },
                 actions = {
                     IconButton(onClick = {
-                        // Si la permission est accordée, on lance le scan
                         if (locationPermissionGranted) {
-                            scanInProgress.value = !scanInProgress.value
+                            try {
+                                if (scanInProgress.value) {
+                                    // Arrêter le scan
+                                    scanner?.stopScan(scanCallback) // Utilisation directe de scanCallback sans .value
+                                    scanInProgress.value = false
+                                } else {
+                                    // Démarrer le scan
+                                    scanner?.startScan(scanCallback) // Utilisation directe de scanCallback sans .value
+                                    scanInProgress.value = true
+                                }
+                            } catch (e: SecurityException) {
+                                Log.e("BLEScan", "Permission manquante pour démarrer le scan BLE", e)
+                                requestLocationPermission(context)
+                            }
                         } else {
                             requestLocationPermission(context)
                         }
@@ -155,6 +218,7 @@ fun BLEScanScreen() {
                             contentDescription = if (scanInProgress.value) "Pause" else "Play"
                         )
                     }
+
                 }
             )
         }
@@ -169,34 +233,30 @@ fun BLEScanScreen() {
         ) {
             val text = if (scanInProgress.value) "Scan BLE en cours..." else "Lancer le Scan BLE"
             Text(text = text, fontSize = 20.sp)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Affichage des appareils trouvés avec LazyColumn pour le défilement
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(devicesFound.value.toList()) { result ->
+                    Text(text = "Device: ${result.device.name ?: "Inconnu"} - ${result.device.address}")
+                }
+            }
         }
     }
 }
 
-private fun requestLocationPermission(context: Context) {
-    // Si la permission est nécessaire, on la demande
-    if (ActivityCompat.shouldShowRequestPermissionRationale(context as Activity, Manifest.permission.ACCESS_FINE_LOCATION)) {
-        Toast.makeText(context, "La permission de localisation est requise pour scanner les périphériques BLE.", Toast.LENGTH_LONG).show()
-    }
-    ActivityCompat.requestPermissions(
-        context,
-        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-        1
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun BLEHomeScreenPreview() {
-    AndroidSmartDeviceTheme {
-        BLEHomeScreen(navController = rememberNavController())
+fun requestLocationPermission(context: Context) {
+    if (ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) != PackageManager.PERMISSION_GRANTED
+    ) {
+        ActivityCompat.requestPermissions(
+            context as Activity,
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+            1
+        )
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun BLEScanScreenPreview() {
-    AndroidSmartDeviceTheme {
-        BLEScanScreen()
-    }
-}
