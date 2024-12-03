@@ -69,16 +69,12 @@ fun BLEScanScreen() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 if (locationPermissionGranted) {
                     try {
-                        // Ajoute le périphérique trouvé à la liste si son adresse n'a pas encore été ajoutée
-                        val deviceAddress = result.device.address
-                        if (devicesFound.value.none { it.device.address == deviceAddress }) {
+                        // Vérifie si l'appareil est déjà dans la liste
+                        if (!devicesFound.value.any { it.device.address == result.device.address }) {
+                            // Ajoute le périphérique trouvé à la liste
                             devicesFound.value = devicesFound.value + result
+                            Log.d("BLEScan", "Appareil trouvé: ${result.device.name ?: "Inconnu"} avec RSSI: ${result.rssi}")
                         }
-
-                        // Log de l'appareil trouvé
-                        val deviceName = result.device.name ?: "Inconnu"
-                        Log.d("BLEScan", "Appareil trouvé: $deviceName")
-
                     } catch (e: SecurityException) {
                         Log.e("BLEScan", "Erreur de permission", e)
                         requestLocationPermission(context)
@@ -162,12 +158,29 @@ fun BLEScanScreen() {
             // Affichage des appareils trouvés avec LazyColumn pour le défilement
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(devicesFound.value.toList()) { result ->
-                    Text(text = "Device: ${result.device.name ?: "Inconnu"} - ${result.device.address}")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "${result.rssi}",
+                            fontSize = 16.sp,
+                            modifier = Modifier.padding(end = 8.dp),
+                            color = Color.Gray
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(text = "Device: ${result.device.name ?: "Inconnu"}", fontSize = 16.sp)
+                            Text(text = "Adresse: ${result.device.address}", fontSize = 14.sp, color = Color.Gray)
+                        }
+                    }
                 }
             }
         }
     }
 }
+
 
 fun requestLocationPermission(context: Context) {
     if (ContextCompat.checkSelfPermission(
@@ -182,3 +195,4 @@ fun requestLocationPermission(context: Context) {
         )
     }
 }
+
