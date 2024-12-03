@@ -30,6 +30,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import fr.isen.eustache.androidsmartdevice.ui.theme.AndroidSmartDeviceTheme
+import androidx.compose.foundation.background
+
 
 class ScanActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,7 +49,7 @@ class ScanActivity : ComponentActivity() {
 fun BLEScanScreen() {
     val context = LocalContext.current
     val scanInProgress = remember { mutableStateOf(false) }
-    val devicesFound = remember { mutableStateOf<Set<ScanResult>>(emptySet()) }
+    val devicesFound = remember { mutableStateOf<Map<String, ScanResult>>(emptyMap()) } // Utilisation d'une Map pour éviter les doublons
 
     // Vérifie si la permission de localisation est accordée
     val locationPermissionGranted = ContextCompat.checkSelfPermission(
@@ -69,12 +71,11 @@ fun BLEScanScreen() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 if (locationPermissionGranted) {
                     try {
-                        // Vérifie si l'appareil est déjà dans la liste
-                        if (!devicesFound.value.any { it.device.address == result.device.address }) {
-                            // Ajoute le périphérique trouvé à la liste
-                            devicesFound.value = devicesFound.value + result
-                            Log.d("BLEScan", "Appareil trouvé: ${result.device.name ?: "Inconnu"} avec RSSI: ${result.rssi}")
+                        // Ajoute ou met à jour le périphérique trouvé dans la Map en utilisant l'adresse comme clé
+                        devicesFound.value = devicesFound.value.toMutableMap().apply {
+                            put(result.device.address, result) // La clé est l'adresse MAC
                         }
+                        Log.d("BLEScan", "Appareil trouvé: ${result.device.name ?: "Inconnu"} avec RSSI: ${result.rssi}")
                     } catch (e: SecurityException) {
                         Log.e("BLEScan", "Erreur de permission", e)
                         requestLocationPermission(context)
@@ -157,10 +158,16 @@ fun BLEScanScreen() {
 
             // Affichage des appareils trouvés avec LazyColumn pour le défilement
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(devicesFound.value.toList()) { result ->
+                items(devicesFound.value.values.toList()) { result -> // Utilise les valeurs de la Map (ScanResult)
+                    // Définir une couleur de fond plus épurée et douce
+                    val backgroundColor = if (result.rssi > -70) Color(0xFFE8F5E9) else Color(0xFFFCE4EC)
+
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(vertical = 8.dp)
+                        modifier = Modifier
+                            .padding(vertical = 8.dp)
+                            .fillMaxWidth()
+                            .background(backgroundColor) // appliquer la couleur de fond
                     ) {
                         Text(
                             text = "${result.rssi}",
@@ -195,4 +202,5 @@ fun requestLocationPermission(context: Context) {
         )
     }
 }
+
 
